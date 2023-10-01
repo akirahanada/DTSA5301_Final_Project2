@@ -733,6 +733,19 @@ mtext("Mortality against Latitude", side=3)
 
 ```
 
+## 6. Identify Possible Biases
+Let me address the potential biases in the analysis:
 
-## 6.  Conclusion
+- **Data Collection Bias:** 
+The data set may contain unreported or misclassified cases or deaths, potentially impacting the accuracy and completeness of the analysis.
+
+- **Temporal Bias:** 
+The dataset may only partially represent historical trends and patterns as it may only capture part of the timeline of incidents.
+
+- **Modeling Bias:** 
+I used the SARIMA model for time series forecasting, but these approaches may need to capture complex data patterns. More sophisticated models may offer better insights.
+
+
+
+## 7.  Conclusion
 The COVID-19 pandemic has resulted in many infections and fatalities worldwide. To better understand this situation, I gathered COVID-19 data from the Johns Hopkins Github website and analyzed the locations and timeframes of these cases. Moreover, I conducted a thorough examination of infection and death trends in the United States. To forecast future numbers of new infections and deaths, I utilized the SARIMA model. Additionally, I discovered a connection between latitude and infection/mortality rates.

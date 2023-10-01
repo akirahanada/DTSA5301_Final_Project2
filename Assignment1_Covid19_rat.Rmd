@@ -29,6 +29,10 @@ library(tidyverse)
 library(stringr)
 library(dplyr)
 library(ggplot2)
+library(lubridate)
+library(sf)
+library(viridis)
+library(forecast)
 ```
 
 
@@ -362,7 +366,7 @@ ggplot(global_aggregated, aes(x = date, y = new_deaths_daily)) +
 
 ### 5.2 Which countries had the highest number of infections and deaths?
 
-According to the following graph, the United States has the highest number of people infected and deaths.
+According to the following graph, **the United States has the highest number of people infected and deaths.**
 
 ```{r}
 library(ggplot2)
@@ -474,8 +478,8 @@ ggplot(us_aggregated, aes(x = date, y = new_deaths_daily)) +
 
 I have ranked each U.S. state by the number of infections per 1,000 people (green) and deaths per 1,000 people (red).
 
-- The states with the highest infection rates are Rhode Island, Alaska, and Kentucky.
-- The states with the highest death rates are Arizona, Oklahoma, and Mississippi.
+- **The states with the highest infection rates are Rhode Island, Alaska, and Kentucky.**
+- **The states with the highest death rates are Arizona, Oklahoma, and Mississippi.**
 
 ```{r}
 
@@ -565,7 +569,7 @@ ggplot(data = merged_usa) +
 
 I use the Seasonal Autoregressive Integrated Moving Average (SARIMA) model to forecast the future number of new cases in the United States. The blue line represents the past number of new infections in the U.S., while the red line shows the projected number of new infections for the next 120 days. 
 
-- Based on the predictions, we can anticipate a gradual decrease in the number of new infections in the coming future.
+- **Based on the predictions, I can anticipate a gradual decrease in the number of new infections in the coming future.**
 
 ```{r}
 # Installing and loading the necessary libraries for SARIMA model
@@ -576,7 +580,7 @@ library(forecast)
 us_data_prophet <- data.frame(ds = us_aggregated$date, y = us_aggregated$new_cases_daily)
 
 # Using the Seasonal Autoregressive Integrated Moving Average (SARIMA) model
-# First, we'll fit the model to the data
+# we'll fit the model to the data
 sarima_fit <- auto.arima(us_data_prophet$y, seasonal = TRUE, stepwise = TRUE, trace = FALSE, approximation = FALSE)
 
 # Forecasting the next 120 days
@@ -666,7 +670,9 @@ US_tot_w_pred
 US_tot_w_pred_cor <- US_tot_w_pred %>%
     select(-c(Province_State, pred))
 ```
+
 ```{r}
+#calculate correlation coefficients between variables and make Correlation Matrix
 cor(US_tot_w_pred_cor)
 ```
 
@@ -676,6 +682,7 @@ cor(US_tot_w_pred_cor)
 Visualize the correlation between latitude, number of infections, number of deaths, number of infections per 1000 persons, and number of deaths per 1000 persons.
 
 ```{r}
+#Scatter plot Matrices 
 pairs(US_tot_w_pred_cor)
 ```
 
@@ -688,18 +695,20 @@ The reasons for this are as follows.
 An estimate is statistically significant if the p-value < 0.05.
 The result is statistically significant with p-value = 0.00457 < 0.05.
 
-I have analyzed the data and created a graph that shows the number of infections per 1,000 people in relation to latitude. The graph displays red lines that represent the results of Fitting Linear Models. 
+I have analyzed the data and created a graph that shows the number of infections per 1,000 people in relation to latitude. The graph displays red lines that represent the results of Fitting Linear Model. 
 
-- From a visual perspective, it is clear that the infection rate increases as the latitude increases.
+- From a visual perspective, it is clear that **the infection rate increases as the latitude increases.**
 
 ```{r}
-
+#Fitting Linear Model of cases_per_thou ~ Lat
 lm.cas <- lm( cases_per_thou ~ Lat, data =US_tot_w_pred_cor)
+#Output the results of regression analysis
 summary(lm.cas)
 
 ```
 
 ```{r}
+#Scatter plot cases_per_thou against Latitude and Linear Model
 plot(US_tot_w_pred_cor$Lat, US_tot_w_pred_cor$cases_per_thou, xlab = "Latitude", ylab = "cases_per_thou")
 abline(lm.cas, col="red", lwd=2)
 mtext("cases_per_thou against Latitude", side=3)
@@ -715,17 +724,19 @@ This correlation is supported by statistical significance, as shown when p-value
 Results are statistically significant if p-value = 0.00363 < 0.05, etc.
 
 In fact, I have plotted the number of deaths per 1,000 people against latitude.
-The results from the Fitting Linear Models are indicated by the red line. 
+The results from the Fitting Linear Model are indicated by the red line. 
 
-- Visually, it is understandable that higher latitude results in higher mortality.
+- Visually, it is understandable that **higher latitude results in higher mortality**.
 
 ```{r}
-
+#Fitting Linear Model of deaths_per_thou ~ Lat
 lm.res <- lm( deaths_per_thou ~ Lat, data =US_tot_w_pred_cor)
+#Output the results of regression analysis
 summary(lm.res)
 
 ```
 ```{r}
+#Scatter plot deaths_per_thou against Latitude and Linear Model
 plot(US_tot_w_pred_cor$Lat, US_tot_w_pred_cor$deaths_per_thou, xlab = "Latitude", ylab = "deaths_per_thou")
 abline(lm.res, col="red", lwd=2)
 mtext("Mortality against Latitude", side=3)
@@ -740,7 +751,7 @@ Let me address the potential biases in the analysis:
 The data set may contain unreported or misclassified cases or deaths, potentially impacting the accuracy and completeness of the analysis.
 
 - **Temporal Bias:** 
-The dataset may only partially represent historical trends and patterns as it may only capture part of the timeline of incidents.
+The dataset may only partially represent historical trends and patterns as it may only capture part of the timeline of cases or deaths.
 
 - **Modeling Bias:** 
 I used the SARIMA model for time series forecasting, but these approaches may need to capture complex data patterns. More sophisticated models may offer better insights.
@@ -748,4 +759,4 @@ I used the SARIMA model for time series forecasting, but these approaches may ne
 
 
 ## 7.  Conclusion
-The COVID-19 pandemic has resulted in many infections and fatalities worldwide. To better understand this situation, I gathered COVID-19 data from the Johns Hopkins Github website and analyzed the locations and timeframes of these cases. Moreover, I conducted a thorough examination of infection and death trends in the United States. To forecast future numbers of new infections and deaths, I utilized the SARIMA model. Additionally, I discovered a connection between latitude and infection/mortality rates.
+The COVID-19 pandemic has resulted in many infections and fatalities worldwide. To better understand this situation, I gathered COVID-19 data from the Johns Hopkins Github website and analyzed the locations and timeframes of these cases. Moreover, I conducted a thorough examination of infection and death trends in the United States. To forecast future numbers of new infections and deaths, I utilized the SARIMA model. Additionally, I discovered a connection between latitude and infection/mortality rates using the Fitting Linear Model.

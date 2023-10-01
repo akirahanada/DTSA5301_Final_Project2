@@ -1,0 +1,738 @@
+---
+title: "Final Project 2: Reproducible Report on COVID19 Data"
+author: "Akira Hanada"
+date: "2023-09-16"
+output: html_document
+---
+
+## 1.Introduction
+The global pandemic of COVID-19 has caused a significant number of infections and fatalities. I obtained COVID-19 data from the Johns Hopkins Github website and analyzed the locations and timeframes where these infections and deaths occurred. Additionally, I conducted a detailed analysis of infection and fatality trends in the United States, utilizing predictive models to forecast future conditions. Furthermore, I explored the correlation between infections and deaths about population and latitude.
+
+## 2. Data Source
+This study utilized COVID-19 data from the Johns Hopkins Github site.
+
+
+## 3. Data Gathering 
+First, data is retrieved from the specified location.
+
+
+```{r}
+#install.packages("tidyverse")
+#install.packages("stringr")
+#install.packages("sf")
+#install.packages("dplyr")
+#install.packages("ggplot2")
+#install.packages('forecast', quietly = TRUE)
+```
+```{r}
+library(tidyverse)
+library(stringr)
+library(dplyr)
+library(ggplot2)
+```
+
+
+```{r}
+url_in <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/"
+```
+
+```{r}
+file_names <- c("time_series_covid19_confirmed_global.csv", "time_series_covid19_deaths_global.csv", "time_series_covid19_confirmed_US.csv",  "time_series_covid19_deaths_US.csv")
+```
+
+```{r}
+urls <- str_c(url_in, file_names)
+```
+
+```{r}
+urls
+```
+```{r}
+global_cases <- read_csv(urls[1])
+global_deaths <- read_csv(urls[2])
+US_cases <- read_csv(urls[3])
+US_deaths <- read_csv(urls[4])
+```
+```{r}
+global_cases
+```
+
+## 4. Data cleaning 
+Let me start with Data Cleaning. 
+First, Convert an array of global data.
+
+```{r}
+global_cases <- global_cases %>%
+  pivot_longer(cols = -c('Province/State', 'Country/Region', Lat, Long), names_to = "date", values_to = "cases") %>%
+  select(-c(Lat, Long))
+```
+
+```{r}
+global_cases
+```
+
+```{r}
+global_deaths <- global_deaths %>%
+  pivot_longer(cols = -c('Province/State', 'Country/Region', Lat, Long), names_to = "date", values_to = "deaths") %>%
+  select(-c(Lat, Long))
+```
+
+```{r}
+global_deaths
+```
+
+```{r}
+library(lubridate)
+```
+
+Next, convert the date format.
+
+```{r}
+global <- global_cases %>%
+  full_join(global_deaths) %>%
+  rename(Country_Region = 'Country/Region', Province_State=`Province/State`) %>%
+  mutate(date = mdy(date))
+```
+
+```{r}
+global
+```
+```{r}
+summary(global)
+```
+
+Next, extract only positive cases.
+
+```{r}
+global <- global %>% filter(cases > 0)
+```
+
+```{r}
+summary(global)
+```
+
+The US data array is converted in the same way.
+
+```{r}
+US_cases
+```
+```{r}
+US_cases %>%
+  pivot_longer(cols = -(UID:Combined_Key), names_to = "date", values_to = "cases")
+```
+
+```{r}
+US_cases <- US_cases %>%
+  pivot_longer(cols = -(UID:Combined_Key), names_to = "date", values_to = "cases") %>%
+  select(Admin2:cases) %>%
+  mutate(date = mdy(date)) %>%
+  select(-c(Long_))
+```
+
+```{r}
+US_cases
+```
+
+US latitude data is stored in US_Lat.
+
+```{r}
+US_Lat <- US_cases %>%
+  group_by(Province_State, Lat) %>%
+  select(Province_State, Lat)
+
+```
+
+```{r}
+US_Lat
+```
+
+Next, convert the date format.
+
+```{r}
+US_deaths <- US_deaths %>%
+  pivot_longer(cols = -(UID:Population), names_to = "date", values_to = "deaths") %>%
+  select(Admin2:deaths) %>%
+  mutate(date = mdy(date)) %>%
+  select(-c(Long_))
+```
+
+```{r}
+US_deaths
+```
+
+Join the two US tables.
+
+```{r}
+US <- US_cases %>%
+  full_join(US_deaths)
+```
+```{r}
+US
+```
+
+Merge Province_State and Country_Region into Combined_Key.
+
+```{r}
+global <- global  %>%
+  unite("Combined_Key", c(Province_State, Country_Region), sep=", ", na.rm = TRUE, remove = FALSE)
+```
+
+```{r}
+global
+```
+
+```{r}
+uid_lookup_url <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/UID_ISO_FIPS_LookUp_Table.csv"
+```
+
+```{r}
+uid <- read_csv(uid_lookup_url) %>%
+  select(-c(Lat, Long_, Combined_Key, code3, iso2, iso3, Admin2))
+```
+```{r}
+global <- global %>%
+  left_join(uid, by = c("Province_State", "Country_Region")) %>%
+  select(-c(UID, FIPS)) %>%
+  select(Province_State, Country_Region, date, cases, deaths, Population, Combined_Key)
+global
+```
+
+
+```{r}
+US_by_state <- US %>%
+  group_by(Province_State, Country_Region, date) %>%
+  summarize(Lat = mean(Lat), cases = sum(cases), deaths = sum(deaths), Population = sum(Population)) %>%
+  mutate(deaths_per_mill = deaths * 1000000 / Population) %>%
+  select(Province_State, Country_Region, Lat, date, cases, deaths, deaths_per_mill, Population) %>%
+  ungroup()
+```
+```{r}
+US_by_state
+```
+
+```{r}
+US_totals <- US_by_state %>%
+  group_by(Country_Region, date) %>%
+  summarize(cases = sum(cases), deaths = sum(deaths), Population = sum(Population)) %>%
+  mutate(deaths_per_mill = deaths *1000000 / Population) %>%
+  select(Country_Region, date, cases, deaths, deaths_per_mill, Population) %>%
+  ungroup()
+```
+
+```{r}
+US_totals
+```
+
+```{r}
+tail(US_totals)
+```
+
+
+```{r}
+US_by_state <- US_by_state %>%
+  mutate(new_cases = cases - lag(cases), new_deaths = deaths - lag(deaths))
+US_totals <- US_totals %>%
+  mutate(new_cases = cases - lag(cases), new_deaths = deaths - lag(deaths))
+```
+
+```{r}
+tail(US_totals)
+```
+
+```{r}
+tail(US_totals %>% select(new_cases, new_deaths, everything()))
+```
+
+
+```{r}
+US_state_totals <- US_by_state %>%
+  group_by(Province_State) %>%
+  summarize(Lat = mean(Lat), deaths = max(deaths), cases = max(cases), 
+            population = max(Population), 
+            cases_per_thou = 1000 * cases / population,
+            deaths_per_thou = 1000 * deaths / population) %>%
+  filter(cases > 0, population > 0)
+```
+
+```{r}
+US_state_totals %>%
+  slice_min(deaths_per_thou, n = 10)
+```
+
+```{r}
+US_state_totals %>%
+  slice_min(deaths_per_thou, n = 10) %>%
+select(deaths_per_thou, cases_per_thou, everything())
+```
+
+```{r}
+US_state_totals %>%
+  slice_max(deaths_per_thou, n = 10) %>%
+select(deaths_per_thou, cases_per_thou, everything())
+```
+
+```{r}
+mod <- lm(deaths_per_thou ~ cases_per_thou, data =US_state_totals)
+summary(mod)
+```
+
+```{r}
+US_state_totals %>%
+  slice_min(cases_per_thou)
+```
+
+```{r}
+US_state_totals %>%
+  slice_max(cases_per_thou)
+```
+
+```{r}
+x_grid <- seq(1, 10000)
+new_df <- tibble(cases_per_thou = x_grid)
+US_state_totals %>% mutate(pred = predict(mod))
+```
+
+```{r}
+US_tot_w_pred <- US_state_totals %>% mutate(pred = predict(mod))
+```
+
+```{r}
+US_tot_w_pred
+```
+
+
+
+## 5. visualization and analysis 
+
+Next, let me start analyzing the cleaned data through data visualization.
+
+
+
+### 5.1 New Infection case (Blue) and New Deaths (Red) over time (Global)
+
+Let's start by examining the global trends in infections and deaths over time.
+
+- There have been several fluctuations in the number of infections over time, with the highest number of new infections occurring in 2022. Following this peak, there has been a gradual decrease in the number of new infections. 
+- In contrast, deaths have consistently decreased since 2022 and have mostly subsided.
+
+```{r}
+
+library(dplyr)
+library(ggplot2)
+
+global_data <- global
+
+
+# Calculate daily new cases and new deaths
+global_data_sorted <- global_data %>%
+  arrange(Country_Region, date) %>%
+  group_by(Country_Region) %>%
+  mutate(new_cases_daily = c(0, diff(cases)),
+         new_deaths_daily = c(0, diff(deaths)))
+
+# Aggregate data by date
+global_aggregated <- global_data_sorted %>%
+  group_by(date) %>%
+  summarise(new_cases_daily = sum(new_cases_daily),
+            new_deaths_daily = sum(new_deaths_daily)) %>%
+  ungroup()
+
+# New Infections Over Time
+ggplot(global_aggregated, aes(x = date, y = new_cases_daily)) +
+  geom_line(color = "blue") +
+  labs(title = "New Infections Over Time (Global)",
+       x = "Date",
+       y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# New Deaths Over Time
+ggplot(global_aggregated, aes(x = date, y = new_deaths_daily)) +
+  geom_line(color = "red") +
+  labs(title = "New Deaths Over Time (Global)",
+       x = "Date",
+       y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+
+
+
+### 5.2 Which countries had the highest number of infections and deaths?
+
+According to the following graph, the United States has the highest number of people infected and deaths.
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Aggregate data by country for cumulative number of infected persons
+global_aggregated_by_country <- global_data %>%
+  group_by(Country_Region) %>%
+  summarise(cases = max(cases, na.rm = TRUE)) %>%
+  arrange(-cases)
+
+# Aggregate data by country for total number of fatalities
+global_aggregated_by_country_deaths <- global_data %>%
+  group_by(Country_Region) %>%
+  summarise(deaths = max(deaths, na.rm = TRUE)) %>%
+  arrange(-deaths)
+
+# Top N countries by cases
+N <- 30
+top_countries_by_cases <- global_aggregated_by_country %>%
+  head(N)
+
+# Bar chart for top N countries by cumulative number of infected persons
+ggplot(top_countries_by_cases, aes(x = reorder(Country_Region, cases), y = cases)) +
+  geom_bar(stat = "identity", fill = "lightblue") +
+  coord_flip() +
+  labs(title = paste("Top", N, "Countries by Cumulative Number of Infected Persons"),
+       x = "Country",
+       y = "Cumulative Number of Infected Persons") +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 10))
+
+# Top N countries by deaths
+top_countries_by_deaths <- global_aggregated_by_country_deaths %>%
+  head(N)
+
+# Bar chart for top N countries by total number of deaths
+ggplot(top_countries_by_deaths, aes(x = reorder(Country_Region, deaths), y = deaths)) +
+  geom_bar(stat = "identity", fill = "salmon") +
+  coord_flip() +
+  labs(title = paste("Top", N, "Countries by Total Number of deaths"),
+       x = "Country",
+       y = "Total Number of deaths") +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 10))
+
+```
+
+```{r}
+# Top 6 countries by Cumulative Number of Infected Persons
+head(global_aggregated_by_country)
+
+# Top 6 countries by total number of deaths
+head(global_aggregated_by_country_deaths)
+```
+
+
+### 5.3 New Infection case (Blue) and New Deaths (Red) over time (US)
+
+Let's take a closer look at the current situation in the United States, precisely the number of new infections and deaths. The chart shows the number of new infections in blue and the number of new applicants in red. 
+
+- The peak of new infections occurred in 2022 and has been decreasing in waves. 
+- However, the peak of new deaths occurred in 2021 and 2022. Although it is decreasing, a certain number of deaths continue to happen.
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+
+# Filter data for the US
+us_data <- global_data_sorted %>%
+  filter(Country_Region == 'US')
+
+# Aggregate data by date for the US
+us_aggregated <- us_data %>%
+  group_by(date) %>%
+  summarise(new_cases_daily = sum(new_cases_daily),
+            new_deaths_daily = sum(new_deaths_daily)) %>%
+  ungroup()
+
+# Convert date to Date format and calculate days since the first recorded case
+us_aggregated$date <- as.Date(us_aggregated$date)
+us_aggregated$days_since_first_case <- as.numeric(difftime(us_aggregated$date, min(us_aggregated$date), units = "days"))
+
+# Visualize the number of new infections in the US with adjusted date labels
+ggplot(us_aggregated, aes(x = date, y = new_cases_daily)) +
+  geom_line(color = "blue") +
+  labs(title = "New Infections Over Time (US)",
+       x = "Date",
+       y = "New Infections") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+  
+
+# Visualize the number of new deaths in the US with date on the horizontal axis and adjusted date labels
+ggplot(us_aggregated, aes(x = date, y = new_deaths_daily)) +
+  geom_line(color = "red") +
+  labs(title = "New Deaths Over Time (US)",
+       x = "Date",
+       y = "New Deaths") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+  
+
+```
+
+
+### 5.4 Which U.S. states are most likely to be infected or die?
+
+I have ranked each U.S. state by the number of infections per 1,000 people (green) and deaths per 1,000 people (red).
+
+- The states with the highest infection rates are Rhode Island, Alaska, and Kentucky.
+- The states with the highest death rates are Arizona, Oklahoma, and Mississippi.
+
+```{r}
+
+library(ggplot2)
+
+us_tot_w_pred_data <- US_tot_w_pred
+
+
+# Sort the data by cases_per_thou in ascending order
+sorted_us_tot_w_pred <- us_tot_w_pred_data %>%
+  arrange(cases_per_thou)
+
+# Visualize the cases_per_thou for each state
+ggplot(sorted_us_tot_w_pred, aes(x = cases_per_thou, y = reorder(Province_State, cases_per_thou))) +
+  geom_bar(stat = "identity", fill = "lightgreen", width = 0.8) +
+  labs(title = "Cases per Thousand by US State",
+       x = "Cases per Thousand",
+       y = "State") +
+  theme_minimal()+
+  theme(axis.text.y = element_text(size = 5)) 
+
+
+# Sort the data by deaths_per_thou in ascending order
+sorted_deaths_per_thou_corrected <- us_tot_w_pred_data %>%
+  arrange(deaths_per_thou)
+
+# Visualize the deaths_per_thou for each state
+ggplot(sorted_deaths_per_thou_corrected, aes(x = deaths_per_thou, y = reorder(Province_State, deaths_per_thou))) +
+  geom_bar(stat = "identity", fill = "salmon", width = 0.8) +
+  labs(title = "Deaths per Thousand by US State",
+       x = "Deaths per Thousand",
+       y = "State") +
+  theme_minimal()+
+  theme(axis.text.y = element_text(size = 5)) 
+
+
+```
+
+
+### 5.5 The map shows which the U.S. states are more likely to be infected or die.
+
+Consider visualizing the number of infections per 1,000 people in green and the number of applicants per 1,000 people in red on a map, using color intensity to differentiate them. 
+
+- The infection rate appears to be evenly distributed throughout the United States. 
+- However, the mortality rate seems to be more concentrated in the particular states.
+
+```{r}
+#install.packages("sf")
+library(sf)
+library(tidyverse)
+library(viridis)
+
+# Load the US states shapefile from the provided source
+usa_states <- st_read('https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json')
+
+# Merge the shapefile with the us_tot_w_pred_data on state name
+merged_usa <- left_join(usa_states, us_tot_w_pred_data, by = c("name" = "Province_State"))
+
+# Plot the data
+ggplot(data = merged_usa) +
+  geom_sf(aes(fill = cases_per_thou), color = "0.8", size = 0.8) +
+  scale_fill_viridis(option = "viridis", direction = -1, end = 0.9) +
+  labs(title = "Cases per Thousand by US State",
+       fill = "Cases per Thousand") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+```
+
+```{r}
+library(ggplot2)
+library(viridis)
+
+# Plot the deaths_per_thou data on the map of the US
+ggplot(data = merged_usa) +
+  geom_sf(aes(fill = deaths_per_thou), color = "0.8", size = 0.8) +
+  scale_fill_viridis(option = "magma", direction = -1, end = 0.9) +
+  labs(title = "Deaths per Thousand by US State",
+       fill = "Deaths per Thousand") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+```
+
+
+### 5.6 The SARIMA model to predict the number of future new infections in the United States.
+
+I use the Seasonal Autoregressive Integrated Moving Average (SARIMA) model to forecast the future number of new cases in the United States. The blue line represents the past number of new infections in the U.S., while the red line shows the projected number of new infections for the next 120 days. 
+
+- Based on the predictions, we can anticipate a gradual decrease in the number of new infections in the coming future.
+
+```{r}
+# Installing and loading the necessary libraries for SARIMA model
+#install.packages('forecast', quietly = TRUE)
+library(forecast)
+
+# Prepare the data
+us_data_prophet <- data.frame(ds = us_aggregated$date, y = us_aggregated$new_cases_daily)
+
+# Using the Seasonal Autoregressive Integrated Moving Average (SARIMA) model
+# First, we'll fit the model to the data
+sarima_fit <- auto.arima(us_data_prophet$y, seasonal = TRUE, stepwise = TRUE, trace = FALSE, approximation = FALSE)
+
+# Forecasting the next 120 days
+sarima_forecast <- forecast(sarima_fit, h = 120)
+
+# Ensuring that the forecasted values are not negative
+sarima_forecast$mean <- pmax(sarima_forecast$mean, 0)
+
+# Extracting the dates for the forecasted values
+forecast_dates <- seq(tail(as.Date(us_data_prophet$ds), 1) + 1, by = "days", length.out = 120)
+
+# Combining historical and forecasted dates for the x-axis
+all_dates <- c(as.Date(us_data_prophet$ds), forecast_dates)
+
+# Plotting the historical data
+plot(all_dates, c(us_data_prophet$y, rep(NA, 120)), type = "l", col = "blue",
+     main = 'Predicted New Infections Over Time (US) using SARIMA', 
+     xlab = 'Date', ylab = 'New Infections', xaxt = 'n', ylim = c(0, max(c(us_data_prophet$y, sarima_forecast$mean))))
+
+# Adding the forecasted data to the plot
+lines(forecast_dates, sarima_forecast$mean, col = "red", lwd = 2)
+
+# Adding the confidence interval for the forecast
+polygon(c(forecast_dates, rev(forecast_dates)), 
+        c(sarima_forecast$lower[,2], rev(sarima_forecast$upper[,2])), 
+        col = rgb(1, 0.5, 0.5, 0.5), border = NA)
+
+# Formatting the x-axis
+axis.Date(1, at = seq(min(all_dates), max(all_dates), by = 'month'), format = '%b %Y')
+
+```
+
+
+### 5.7 Predict the number of future new deaths in the U.S. using the SARIMA model.
+
+Forecast future new deaths in the U.S. using the Seasonal Autoregressive Integrated Moving Average (SARIMA) model.
+The number of new infections in the U.S. in the past is shown in blue, and the projected number of new infections in the next 120 days is shown in red.
+The predicted results show that the number of new infections will slowly decline and settle at a fixed number in the future.
+
+
+```{r}
+# Installing and loading the necessary libraries for SARIMA model
+#install.packages('forecast', quietly = TRUE)
+library(forecast)
+
+# Prepare the data
+us_data_deaths <- data.frame(ds = us_aggregated$date, y = us_aggregated$new_deaths_daily)
+
+# Using the Seasonal Autoregressive Integrated Moving Average (SARIMA) model
+# First, we'll fit the model to the data
+sarima_fit_deaths <- auto.arima(us_data_deaths$y, seasonal = TRUE, stepwise = TRUE, trace = FALSE, approximation = FALSE)
+
+# Forecasting the next 120 days
+sarima_forecast_deaths <- forecast(sarima_fit_deaths, h = 120)
+
+# Ensuring that the forecasted values are not negative
+sarima_forecast_deaths$mean <- pmax(sarima_forecast_deaths$mean, 0)
+
+# Extracting the dates for the forecasted values
+forecast_dates_deaths <- seq(tail(as.Date(us_data_deaths$ds), 1) + 1, by = "days", length.out = 120)
+
+# Combining historical and forecasted dates for the x-axis
+all_dates_deaths <- c(as.Date(us_data_deaths$ds), forecast_dates_deaths)
+
+# Plotting the historical data
+plot(all_dates_deaths, c(us_data_deaths$y, rep(NA, 120)), type = "l", col = "blue",
+     main = 'Predicted New deaths Over Time (US) using SARIMA', 
+     xlab = 'Date', ylab = 'New Infections', xaxt = 'n', ylim = c(0, max(c(us_data_deaths$y, sarima_forecast_deaths$mean))))
+
+# Adding the forecasted data to the plot
+lines(forecast_dates_deaths, sarima_forecast_deaths$mean, col = "red", lwd = 2)
+
+# Adding the confidence interval for the forecast
+polygon(c(forecast_dates_deaths, rev(forecast_dates_deaths)), 
+        c(sarima_forecast_deaths$lower[,2], rev(sarima_forecast_deaths$upper[,2])), 
+        col = rgb(1, 0.5, 0.5, 0.5), border = NA)
+
+# Formatting the x-axis
+axis.Date(1, at = seq(min(all_dates_deaths), max(all_dates_deaths), by = 'month'), format = '%b %Y')
+
+
+```
+```{r}
+US_tot_w_pred
+```
+```{r}
+US_tot_w_pred_cor <- US_tot_w_pred %>%
+    select(-c(Province_State, pred))
+```
+```{r}
+cor(US_tot_w_pred_cor)
+```
+
+
+### 5.8 Visualizing Correlations
+
+Visualize the correlation between latitude, number of infections, number of deaths, number of infections per 1000 persons, and number of deaths per 1000 persons.
+
+```{r}
+pairs(US_tot_w_pred_cor)
+```
+
+
+### 5.9 The correlation between latitude and the number of infections per 1,000 people.
+
+- **The results show that the higher the latitude, the higher the infection rate.**
+
+The reasons for this are as follows.
+An estimate is statistically significant if the p-value < 0.05.
+The result is statistically significant with p-value = 0.00457 < 0.05.
+
+I have analyzed the data and created a graph that shows the number of infections per 1,000 people in relation to latitude. The graph displays red lines that represent the results of Fitting Linear Models. 
+
+- From a visual perspective, it is clear that the infection rate increases as the latitude increases.
+
+```{r}
+
+lm.cas <- lm( cases_per_thou ~ Lat, data =US_tot_w_pred_cor)
+summary(lm.cas)
+
+```
+
+```{r}
+plot(US_tot_w_pred_cor$Lat, US_tot_w_pred_cor$cases_per_thou, xlab = "Latitude", ylab = "cases_per_thou")
+abline(lm.cas, col="red", lwd=2)
+mtext("cases_per_thou against Latitude", side=3)
+
+```
+
+
+### 5.10 Correlation between latitude and number of deaths per 1,000 people.
+
+- **The result indicates that higher latitudes correspond to increased mortality rates.** 
+
+This correlation is supported by statistical significance, as shown when p-value < 0.05.
+Results are statistically significant if p-value = 0.00363 < 0.05, etc.
+
+In fact, I have plotted the number of deaths per 1,000 people against latitude.
+The results from the Fitting Linear Models are indicated by the red line. 
+
+- Visually, it is understandable that higher latitude results in higher mortality.
+
+```{r}
+
+lm.res <- lm( deaths_per_thou ~ Lat, data =US_tot_w_pred_cor)
+summary(lm.res)
+
+```
+```{r}
+plot(US_tot_w_pred_cor$Lat, US_tot_w_pred_cor$deaths_per_thou, xlab = "Latitude", ylab = "deaths_per_thou")
+abline(lm.res, col="red", lwd=2)
+mtext("Mortality against Latitude", side=3)
+
+
+```
+
+
+## 6.  Conclusion
+The COVID-19 pandemic has resulted in many infections and fatalities worldwide. To better understand this situation, I gathered COVID-19 data from the Johns Hopkins Github website and analyzed the locations and timeframes of these cases. Moreover, I conducted a thorough examination of infection and death trends in the United States. To forecast future numbers of new infections and deaths, I utilized the SARIMA model. Additionally, I discovered a connection between latitude and infection/mortality rates.
